@@ -60,6 +60,7 @@ export async function handleListToolsRequest(
       );
 
       const filteredTools = toolService.filterTools(clientAllTools, serverConfig);
+
       exposedTools.push(...filteredTools);
 
       if (clientAllTools.length > 0) {

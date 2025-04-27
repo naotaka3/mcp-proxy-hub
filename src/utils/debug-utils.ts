@@ -197,3 +197,26 @@ export function logServerToolError(toolName: string, serverName: string, error: 
   console.error(error);
   console.error('!'.repeat(80) + '\n');
 }
+
+/**
+ * Logs debug information for unknown tools
+ *
+ * @param toolName Name of the unknown tool
+ * @param requestParams Request parameters that were sent
+ * @param clientMaps Client mappings available in the system
+ */
+export function logUnknownTool(
+  toolName: string,
+  requestParams: unknown,
+  clientMaps: unknown
+): void {
+  if (!isDebugMode()) return;
+
+  console.log('\n' + '!'.repeat(80));
+  console.log(`❌ DEBUG: Unknown tool: ${toolName}`);
+  console.log('-'.repeat(80));
+  console.log('Request params:', formatForConsole(requestParams));
+  console.log('-'.repeat(80));
+  console.log('Client maps tool mapping:', formatForConsole(clientMaps));
+  console.log('!'.repeat(80) + '\n');
+}

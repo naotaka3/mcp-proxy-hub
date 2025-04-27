@@ -3,6 +3,7 @@ import { ToolService } from './tool-service.js';
 import { ConnectedClient } from '../client.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { clientMaps } from '../mappers/client-maps.js';
 
 interface ToolsResponse {
   tools: Tool[] | unknown;
@@ -31,6 +32,13 @@ describe('ToolService', () => {
   });
 
   describe('fetchToolsFromClient', () => {
+    // Set up a spy on clientMaps.mapToolToClient instead of mocking it on toolService
+    let mapToolToClientSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      // Create a spy on clientMaps.mapToolToClient
+      mapToolToClientSpy = vi.spyOn(clientMaps, 'mapToolToClient');
+    });
     it('should successfully fetch tools from a client', async () => {
       const toolsResponse: ToolsResponse = {
         tools: [
@@ -115,6 +123,49 @@ describe('ToolService', () => {
         },
         expect.any(Object)
       );
+    });
+
+    it('should map tools to client during fetch', async () => {
+      const toolsResponse: ToolsResponse = {
+        tools: [
+          { name: 'tool1', description: 'Tool 1', inputSchema: { type: 'object' } },
+          { name: 'tool2', description: 'Tool 2', inputSchema: { type: 'object' } },
+        ],
+      };
+
+      vi.mocked(mockClient.client.request).mockResolvedValueOnce(toolsResponse);
+
+      await toolService.fetchToolsFromClient(mockClient);
+
+      // Verify clientMaps.mapToolToClient was called for each tool
+      expect(mapToolToClientSpy).toHaveBeenCalledTimes(2);
+      expect(mapToolToClientSpy).toHaveBeenCalledWith('tool1', mockClient);
+      expect(mapToolToClientSpy).toHaveBeenCalledWith('tool2', mockClient);
+    });
+
+    it('should handle tool name mappings from exposedTools', async () => {
+      const toolsResponse: ToolsResponse = {
+        tools: [
+          { name: 'originalTool', description: 'Original Tool', inputSchema: { type: 'object' } },
+        ],
+      };
+
+      vi.mocked(mockClient.client.request).mockResolvedValueOnce(toolsResponse);
+
+      const serverConfig = {
+        command: 'test',
+        exposedTools: [{ original: 'originalTool', exposed: 'exposedTool' }],
+      };
+
+      await toolService.fetchToolsFromClient(mockClient, serverConfig);
+
+      // Verify both original and exposed names are mapped
+      expect(mapToolToClientSpy).toHaveBeenCalledWith('originalTool', mockClient);
+      expect(mapToolToClientSpy).toHaveBeenCalledWith('exposedTool', mockClient);
+
+      // Verify client toolMappings is updated
+      expect(mockClient.client.toolMappings).toBeDefined();
+      expect(mockClient.client.toolMappings?.exposedTool).toBe('originalTool');
     });
   });
 

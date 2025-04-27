@@ -5,6 +5,12 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { ServerConfig } from '../config.js';
+import { clientMaps } from '../mappers/client-maps.js';
+import {
+  logServerToolRequest,
+  logServerToolResponse,
+  logServerToolError,
+} from '../utils/debug-utils.js';
 
 export class ToolService {
   /**
@@ -35,7 +41,33 @@ export class ToolService {
 
       const processedTools = toolsResponse.map((tool) => {
         // Add server name prefix to description
-        return this.prefixToolDescription(tool, connectedClient.name);
+        const processedTool = this.prefixToolDescription(tool, connectedClient.name);
+
+        // Map the tool to the client directly using clientMaps
+        clientMaps.mapToolToClient(processedTool.name, connectedClient);
+
+        // Handle tool name mapping from exposedTools if configured
+        if (serverConfig?.exposedTools) {
+          // Find any tool mapping in exposedTools
+          const toolMapping = serverConfig.exposedTools.find(
+            (exposedTool) => typeof exposedTool !== 'string' && exposedTool.original === tool.name
+          );
+
+          if (toolMapping && typeof toolMapping !== 'string') {
+            const exposedName = toolMapping.exposed;
+
+            // Store original to exposed name mapping in client
+            if (!connectedClient.client.toolMappings) {
+              connectedClient.client.toolMappings = {};
+            }
+            connectedClient.client.toolMappings[exposedName] = tool.name;
+
+            // Map the exposed name to the client as well
+            clientMaps.mapToolToClient(exposedName, connectedClient);
+          }
+        }
+
+        return processedTool;
       });
 
       return processedTools;
@@ -59,19 +91,29 @@ export class ToolService {
       // The name to use when calling the tool (may be different from what the user specified)
       const callName = originalToolName || toolName;
 
-      // Call the tool
-      return await client.client.request(
-        {
-          method: 'tools/call',
-          params: {
-            name: callName,
-            arguments: args,
-            _meta: meta,
-          },
+      // Create request object
+      const request = {
+        method: 'tools/call',
+        params: {
+          name: callName,
+          arguments: args,
+          _meta: meta,
         },
-        CompatibilityCallToolResultSchema
-      );
+      };
+
+      // Log the tool request
+      logServerToolRequest(toolName, client.name, request);
+
+      // Call the tool
+      const result = await client.client.request(request, CompatibilityCallToolResultSchema);
+
+      // Log the tool response
+      logServerToolResponse(toolName, result);
+
+      return result;
     } catch (error) {
+      // Log the tool error
+      logServerToolError(toolName, client.name, error);
       console.error(`Error calling tool ${toolName} on ${client.name}:`, error);
       throw error;
     }

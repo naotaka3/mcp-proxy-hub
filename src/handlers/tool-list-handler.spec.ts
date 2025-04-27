@@ -219,4 +219,69 @@ describe('Tool List Handler', () => {
     // Verify result only includes tools from clients (empty in this case)
     expect(result).toEqual({ tools: [] });
   });
+
+  it('should map tools to their respective clients through fetchToolsFromClient', async () => {
+    // Mock the service responses
+    const tool1: Tool = { name: 'tool1', description: 'Tool 1', inputSchema: { type: 'object' } };
+    const tool2: Tool = { name: 'tool2', description: 'Tool 2', inputSchema: { type: 'object' } };
+
+    vi.mocked(toolService.fetchToolsFromClient).mockResolvedValueOnce([tool1]);
+    vi.mocked(toolService.fetchToolsFromClient).mockResolvedValueOnce([tool2]);
+    vi.mocked(toolService.filterTools).mockImplementation((tools) => tools as Tool[]);
+    vi.mocked(customToolService.createCustomTools).mockReturnValueOnce([]);
+
+    const request = {
+      method: 'tools/list' as const,
+      params: {},
+    };
+
+    await handleListToolsRequest(request, connectedClients, serverConfigs);
+
+    // Verify that fetchToolsFromClient was called for each client
+    expect(toolService.fetchToolsFromClient).toHaveBeenCalledWith(
+      mockClient1,
+      serverConfigs.client1,
+      undefined
+    );
+    expect(toolService.fetchToolsFromClient).toHaveBeenCalledWith(
+      mockClient2,
+      serverConfigs.client2,
+      undefined
+    );
+  });
+
+  it('should handle tool name mappings from server config through fetchToolsFromClient', async () => {
+    // Mock the service responses and add exposedTools with mapping to server config
+    const tool1: Tool = {
+      name: 'originalTool',
+      description: 'Original Tool',
+      inputSchema: { type: 'object' },
+    };
+
+    vi.mocked(toolService.fetchToolsFromClient).mockResolvedValueOnce([tool1]);
+    vi.mocked(toolService.filterTools).mockImplementation((tools) => tools as Tool[]);
+    vi.mocked(customToolService.createCustomTools).mockReturnValueOnce([]);
+
+    // Add exposedTools with tool mapping to server config
+    serverConfigs.client1 = {
+      ...serverConfigs.client1,
+      exposedTools: [{ original: 'originalTool', exposed: 'exposedTool' }],
+    };
+
+    const request = {
+      method: 'tools/list' as const,
+      params: {},
+    };
+
+    await handleListToolsRequest(request, connectedClients, serverConfigs);
+
+    // Verify fetchToolsFromClient was called with the config containing exposedTools
+    expect(toolService.fetchToolsFromClient).toHaveBeenCalledWith(
+      mockClient1,
+      expect.objectContaining({
+        exposedTools: [{ original: 'originalTool', exposed: 'exposedTool' }],
+      }),
+      undefined
+    );
+  });
 });
