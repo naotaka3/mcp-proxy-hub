@@ -45,12 +45,8 @@ async function main() {
   await server.connect(transport);
 
   async function closeAll() {
-    logger.info('Close all clients');
-    try {
-      await cleanup();
-    } catch {
-      logger.error('Error during cleanup');
-    }
+    await cleanup();
+
     try {
       await server.close();
     } catch {
@@ -76,14 +72,14 @@ async function main() {
       return;
     }
 
-    console.error('No parent process found. Shutting down...');
+    logger.info('Parent process is dead, shutting down...');
     await closeAll();
     process.exit(0);
   }, 2000);
 }
 
 main().catch((error) => {
-  logger.error('Server error:', error);
+  logger.error('Error during server startup:', error);
   logger.close();
   process.exit(1);
 });

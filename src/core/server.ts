@@ -37,6 +37,14 @@ export function createMCPServer(): Server {
 export function createCleanupFunction(): () => Promise<void> {
   return async () => {
     const connectedClients = getConnectedClient();
-    await Promise.all(connectedClients.map(({ cleanup }) => cleanup()));
+    await Promise.all(
+      connectedClients.map(async (client) => {
+        try {
+          await client.cleanup();
+        } catch (error) {
+          console.error(`Error during cleanup for client ${client.name}:`, error);
+        }
+      })
+    );
   };
 }
