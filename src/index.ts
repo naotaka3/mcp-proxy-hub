@@ -25,6 +25,19 @@ logger.redirectConsole();
 
 logger.info(`Server starting up`);
 
+/**
+ * Check if the parent process is alive.
+ * @returns {boolean} True if the parent process is alive, false otherwise.
+ */
+function isParentAlive() {
+  try {
+    process.kill(process.ppid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
   const transport = new StdioServerTransport();
   const { server, cleanup } = await createServer();
@@ -57,6 +70,16 @@ async function main() {
     await closeAll();
     process.exit(0);
   });
+
+  setInterval(async () => {
+    if (isParentAlive()) {
+      return;
+    }
+
+    console.error('No parent process found. Shutting down...');
+    await closeAll();
+    process.exit(0);
+  }, 2000);
 }
 
 main().catch((error) => {
