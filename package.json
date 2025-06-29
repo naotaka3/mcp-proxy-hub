@@ -4,6 +4,34 @@
   "author": "Naotaka Mizuki",
   "license": "MIT",
   "description": "An MCP proxy hub that aggregates and serves multiple MCP resource servers through a single interface",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "proxy",
+    "hub",
+    "aggregator",
+    "server",
+    "tool",
+    "resource",
+    "prompt",
+    "integration",
+    "middleware",
+    "routing",
+    "typescript",
+    "nodejs",
+    "express",
+    "stdio",
+    "sse",
+    "server-sent-events"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/naotaka3/mcp-proxy-hub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/naotaka3/mcp-proxy-hub/issues"
+  },
+  "homepage": "https://github.com/naotaka3/mcp-proxy-hub#readme",
   "type": "module",
   "bin": {
     "mcp-proxy-hub": "build/index.js"
