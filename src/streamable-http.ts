@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
 import cors from 'cors';
-import { createServer } from './mcp-proxy.js';
+import { initClients, createProxyServer, createBackendCleanup } from './mcp-proxy.js';
 import { loadConfig } from './config.js';
 import 'dotenv/config';
 
@@ -12,12 +12,21 @@ const app = express();
 
 app.use(cors());
 
+interface Session {
+  server: ReturnType<typeof createProxyServer>;
+  transport: StreamableHTTPServerTransport;
+}
+
 async function main() {
   const config = await loadConfig();
-  const { server, cleanup } = await createServer();
 
-  // Map to store transports by session ID for stateful mode
-  const transports = new Map<string, StreamableHTTPServerTransport>();
+  // Initialize backend client connections once at startup.
+  // Each HTTP session gets its own Server instance but shares these connections.
+  await initClients();
+  const backendCleanup = createBackendCleanup();
+
+  // Map to store sessions by session ID for stateful mode.
+  const sessions = new Map<string, Session>();
 
   // Bearer token auth middleware
   const authToken = config.serverTransport?.auth?.token || process.env.MCP_PROXY_AUTH_TOKEN;
@@ -45,55 +54,63 @@ async function main() {
     const sessionId = getSessionId(req);
 
     // Check for existing session
-    if (sessionId && transports.has(sessionId)) {
-      const transport = transports.get(sessionId)!;
-      await transport.handleRequest(req, res);
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId)!;
+      await session.transport.handleRequest(req, res);
       return;
     }
 
-    // New session - create transport and connect
+    // New session - create a fresh server instance and transport.
+    // The server shares the same backend client connections.
+    const server = createProxyServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
     });
 
     transport.onclose = () => {
       if (transport.sessionId) {
-        transports.delete(transport.sessionId);
+        const session = sessions.get(transport.sessionId);
+        if (session) {
+          session.server.close().catch(() => {});
+          sessions.delete(transport.sessionId);
+        }
       }
     };
 
     await server.connect(transport);
 
-    if (transport.sessionId) {
-      transports.set(transport.sessionId, transport);
-    }
-
     await transport.handleRequest(req, res);
+
+    // Store session AFTER handleRequest, since sessionId is set during request processing.
+    if (transport.sessionId) {
+      sessions.set(transport.sessionId, { server, transport });
+    }
   });
 
   // Handle GET requests for server-to-client notifications via SSE
   app.get(mcpPath, async (req, res) => {
     const sessionId = getSessionId(req);
-    if (!sessionId || !transports.has(sessionId)) {
+    if (!sessionId || !sessions.has(sessionId)) {
       res.status(400).json({ error: 'Invalid or missing session ID' });
       return;
     }
 
-    const transport = transports.get(sessionId)!;
-    await transport.handleRequest(req, res);
+    const session = sessions.get(sessionId)!;
+    await session.transport.handleRequest(req, res);
   });
 
   // Handle DELETE requests for session termination
   app.delete(mcpPath, async (req, res) => {
     const sessionId = getSessionId(req);
-    if (!sessionId || !transports.has(sessionId)) {
+    if (!sessionId || !sessions.has(sessionId)) {
       res.status(400).json({ error: 'Invalid or missing session ID' });
       return;
     }
 
-    const transport = transports.get(sessionId)!;
-    await transport.close();
-    transports.delete(sessionId);
+    const session = sessions.get(sessionId)!;
+    await session.transport.close();
+    await session.server.close().catch(() => {});
+    sessions.delete(sessionId);
     res.status(200).json({ message: 'Session terminated' });
   });
 
@@ -106,13 +123,14 @@ async function main() {
 
   async function exit() {
     console.log('Shutting down...');
-    // Close all active transports
-    for (const [, transport] of transports) {
-      await transport.close();
+    // Close all active sessions
+    for (const [, session] of sessions) {
+      await session.transport.close().catch(() => {});
+      await session.server.close().catch(() => {});
     }
-    transports.clear();
-    await cleanup();
-    await server.close();
+    sessions.clear();
+    // Close backend client connections
+    await backendCleanup();
     httpServer.close();
     process.exit(0);
   }
