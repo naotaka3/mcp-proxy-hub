@@ -6,6 +6,7 @@ import {
   handleGetPromptRequest,
   handleListPromptsRequest,
   registerListResourcesHandler,
+  registerListResourceTemplatesHandler,
   registerReadResourceHandler,
 } from './handlers/index.js';
 import { setupEventSource, createMCPServer, createCleanupFunction } from './core/index.js';
@@ -65,6 +66,7 @@ export const createProxyServer = () => {
 
   registerListResourcesHandler(server);
   registerReadResourceHandler(server);
+  registerListResourceTemplatesHandler(server);
 
   return server;
 };
@@ -80,7 +82,7 @@ export const createBackendCleanup = createCleanupFunction;
  * @returns The server and cleanup function
  */
 export const createServer = async () => {
-  const config = await initClients();
+  await initClients();
   const server = createProxyServer();
   const cleanup = createBackendCleanup();
   return { server, cleanup };
